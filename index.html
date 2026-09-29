@@ -161,6 +161,16 @@
   .empty-state { text-align: center; padding: 40px 10px; color: var(--muted); }
   .empty-state .icon { font-size: 40px; margin-bottom: 8px; }
 
+  /* 백업 */
+  .backup-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .backup-btn {
+    padding: 10px 8px; border-radius: 12px; font-size: 14px; font-weight: 600;
+    background: var(--primary-soft); color: var(--primary); transition: opacity .15s;
+  }
+  .backup-btn:hover { opacity: .8; }
+  .backup-btn.secondary { background: var(--bg); color: var(--text); }
+  .backup-msg { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 1.5em; }
+
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
@@ -200,6 +210,16 @@
         </div>
         <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
         <div class="progress-label" id="progressLabel">달성률 0%</div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">💾 데이터 백업</div>
+        <div class="backup-btns">
+          <button class="backup-btn" id="exportBtn">⬇ 내보내기</button>
+          <button class="backup-btn secondary" id="importBtn">⬆ 가져오기</button>
+        </div>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+        <p class="backup-msg" id="backupMsg">할 일을 파일로 저장하거나, 저장한 파일을 불러올 수 있어요.</p>
       </section>
     </aside>
 
@@ -498,6 +518,64 @@
       filter = btn.dataset.filter;
       render();
     });
+  });
+
+  // ----- 내보내기 / 가져오기 -----
+  const backupMsg = $('backupMsg');
+
+  $('exportBtn').addEventListener('click', () => {
+    if (!todos.length) {
+      backupMsg.innerHTML = '<span class="error">내보낼 할 일이 없어요.</span>';
+      return;
+    }
+    const blob = new Blob([JSON.stringify(todos, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `todo-backup-${todayKey()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    backupMsg.textContent = `✅ 할 일 ${todos.length}개를 파일로 저장했어요.`;
+  });
+
+  $('importBtn').addEventListener('click', () => $('importFile').click());
+
+  $('importFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // 같은 파일을 다시 골라도 동작하도록
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(reader.result); } catch (err) { data = null; }
+      const valid = Array.isArray(data) ? data.filter(t =>
+        t && typeof t.text === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.date)
+      ) : [];
+      if (!valid.length) {
+        backupMsg.innerHTML = '<span class="error">올바른 백업 파일이 아니에요.</span>';
+        return;
+      }
+
+      // 기존 할 일은 그대로 두고, 같은 id가 없는 것만 추가
+      const ids = new Set(todos.map(t => t.id));
+      let added = 0;
+      valid.forEach(t => {
+        const id = t.id ? String(t.id) : Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        if (ids.has(id)) return;
+        ids.add(id);
+        todos.push({ id, text: t.text, date: t.date, done: !!t.done, createdAt: Number(t.createdAt) || Date.now() });
+        added++;
+      });
+      save();
+      render();
+      backupMsg.textContent = added
+        ? `✅ 할 일 ${added}개를 불러왔어요.`
+        : '이미 모두 들어있는 할 일이에요.';
+    };
+    reader.readAsText(file);
   });
 
   // ----- 시작 -----
